@@ -1,4 +1,6 @@
 # Python virtual environment
+qdrant/
+qdrant_storage/
 quadrant/
 env/
 venv/

@@ -26,11 +26,118 @@ from langchain_core.tools import tool
 # ========== LLM + Prompt ==========
 llm = init_chat_model(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
 prompt_template = ChatPromptTemplate.from_messages([
-    ("system", """give elabourate answer and be helpful and use the tools provided to you also use the knowledge base to answer the question 
-     if you are not sure about the answer, use the tools to get the answer
-     use the knowledge base to answer the question
-     always think about if the knowledge base is relevant to the question and if it is not, use the tools to get the answer
-     if the knowledge base is relevant to the question, use the knowledge base to answer the question
+    ("system", """Here’s a **rewritten and cleaner version** of your prompt, combining both structure and precision — and adding a note about using tools like tables, syntax highlighting, and layout strategies:
+
+---
+
+## ✅ Final Prompt: Structured Markdown Instruction (with Tool Usage)
+
+````text
+You are a helpful and knowledgeable assistant. Always respond using **clean, well-formatted GitHub-Flavored Markdown (GFM)**.
+
+Your response will be rendered in a live Markdown interface, so it must be readable, visually structured, and pleasant to read.
+
+---
+
+## 🧱 Markdown Formatting Guidelines
+
+### 📌 General Principles
+
+- Respond **only in Markdown** — no HTML, no escaped characters.
+- Keep your answers visually clean, minimal, and well-structured.
+- Use spacing between sections, paragraphs, and elements to improve readability.
+
+---
+
+### 🧵 Headings
+
+- Use `#` for the main title, `##` for sub-sections, and `###` for smaller parts.
+- After a `#` or `##` heading, insert a horizontal line (`---`) on the next line for visual separation.
+
+**Example:**
+
+```md
+## React Context
+---
+````
+
+---
+
+### 🔠 Text Formatting
+
+* Use `**bold**` for key terms and emphasis.
+* Use `_italic_` for soft emphasis or contrast.
+* Use `inline code` for referencing code terms inside sentences.
+
+Make sure text formatting doesn’t break sentence flow or spacing.
+
+---
+
+### 🔢 Lists
+
+* Use `-` or `*` for unordered bullet points.
+* Use `1.`, `2.` etc. for ordered steps.
+* Always leave a blank line before and after lists for spacing.
+
+---
+
+### 💻 Code Blocks
+
+* Use triple backticks (\`\`\`) to wrap multi-line code blocks.
+* Always specify the language (like `js`, `python`, `bash`) for syntax highlighting.
+* Don't explain what backticks are — just use them.
+
+**Example:**
+
+```python
+def greet():
+    print("Hello!")
+```
+
+---
+
+### 📊 Tables (Use When Comparing)
+
+* Use Markdown tables for clean, visual comparison.
+* Always include headers and alignment with `|--|--|`.
+
+**Example:**
+
+```md
+| Feature   | Supported |
+|-----------|-----------|
+| Headings  | ✅        |
+| Code      | ✅        |
+```
+
+---
+
+### 🔧 Use All Markdown Tools Where Helpful
+
+Apply the full set of Markdown tools where needed:
+
+* `Headings` for hierarchy
+* `Lists` for clarity
+* `Code blocks` for examples
+* `Tables` for comparison
+* `Bold/Italic` for emphasis
+* `Horizontal lines (---)` to separate sections
+
+Use them naturally to make your response **easy to scan, not just to read**.
+
+---
+
+## 🎯 Your Task
+
+When the user provides a question, respond using all the rules above. Focus on clarity, structure, and Markdown richness. Do not explain the formatting — just use it.
+
+```
+
+---
+
+Would you like a **shorter version** of this for production use? Or should I also prepare a **system message version** for OpenAI tools (like `openai.ChatCompletion.create()`)?
+```
+
      """),
     MessagesPlaceholder(variable_name="messages"),
 ])
@@ -39,7 +146,7 @@ tavily_search = TavilySearch(max_results=5)
 
 # ========== Custom Document Retrieval Tool ==========
 @tool
-def search_documents(query: str, k: int, config: RunnableConfig) -> str:
+def search_documents(query: str, config: RunnableConfig) -> str:
     """
     Search for relevant documents in the user's personal knowledge base.
     
@@ -77,11 +184,15 @@ def search_documents(query: str, k: int, config: RunnableConfig) -> str:
         )
 
         # Search for relevant documents
-        results = vector_store.similarity_search_with_score(
-            query=query,
-            k=k,
-            filter=filter,
-        )
+        try:
+            results = vector_store.similarity_search_with_score(
+                query=query,
+                k=5,
+                filter=filter,
+            )
+        except Exception as e:
+            print(f"Vector search error: {str(e)}")
+            return f"Error searching document store: {str(e)}"
 
         if results:
             print(f"Found {len(results)} documents for query: {query}")
