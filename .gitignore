@@ -1,4 +1,5 @@
 # Python virtual environment
+quadrant/
 env/
 venv/
 ENV/

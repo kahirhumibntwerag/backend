@@ -29,6 +29,7 @@ class User(Base):
     
     # Relationship to threads
     threads = relationship("Thread", back_populates="user")
+    vectore_stores = relationship("VectoreStore", back_populates="user")
 
 class Thread(Base):
     __tablename__ = 'threads'
@@ -42,6 +43,18 @@ class Thread(Base):
     
     # Relationships
     user = relationship("User", back_populates="threads")
+
+
+class VectoreStore(Base):
+    __tablename__ = 'vectore_stores'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    store_name = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="vectore_stores")
 
 # Create the threads table (this is new)
 Base.metadata.create_all(engine)

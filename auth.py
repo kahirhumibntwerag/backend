@@ -23,7 +23,7 @@ router = APIRouter()
 # openssl rand -hex 32
 SECRET_KEY = "95e3e35c3cd46d3585b0d1b3a55fd6a13cf8783357eb985422eeb02be6ca7e8a"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 300
 
 
 class UserCreate(BaseModel):

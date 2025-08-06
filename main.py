@@ -1,94 +1,150 @@
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.responses import StreamingResponse
-from starlette.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
-from langchain.chat_models import init_chat_model
-import os
-from dotenv import load_dotenv
-load_dotenv()
-
-from typing import Annotated
-from typing_extensions import TypedDict
-from pydantic import BaseModel
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_tavily import TavilySearch
-from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import SystemMessage
-from auth import router
-
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-
-DB_URI = "postgresql://postgres:123456@localhost:5433/postgres"
-
-search = TavilySearch(max_results=10)
-tools = ToolNode(tools=[search])
-
+from starlette.middleware.cors import CORSMiddleware
+from qdrant import vector_store
+from qdrant_client import models
+from auth import get_current_active_user
+from models import User as DBUser
+from langchain_core.messages import AIMessageChunk, SystemMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.chat_models import init_chat_model
+from langgraph.graph import StateGraph, START
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langchain_core.runnables import RunnableConfig
+import os
+from typing import Annotated, TypedDict
+from langgraph.graph.message import add_messages
+from qdrant import qdrant_router
+from auth import router
+from database import get_db
+from sqlalchemy.orm import Session
+from langchain_tavily import TavilySearch
+from langgraph.prebuilt import ToolNode, tools_condition
+from langchain_core.tools import tool
 
-prompt_template = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """You are a helpful and knowledgeable assistant. Always explain concepts clearly and in depth, using practical examples where possible. When responding to user questions, do the following:
-
-Answer the question completely and accurately.
-
-Explain the reasoning or principles behind your answer.
-
-Provide concrete examples or analogies to illustrate your points.
-
-Offer additional tips, alternative solutions, or suggestions that may be helpful.
-
-Tailor your response to the user's level of understanding if detectable. Avoid vague or shallow answers.
-always include references to the sources you used to answer the question.
-also make the answer long and detailed
-include urls to the sources you used to answer the question 
-always write everything in markdown format add some colors to the text
-the markdown should be neat and nice
-""",
-        ),
-        MessagesPlaceholder(variable_name="messages"),
-    ]
-)
+# ========== LLM + Prompt ==========
 llm = init_chat_model(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
-llm_with_tools = prompt_template | llm.bind_tools([search])
+prompt_template = ChatPromptTemplate.from_messages([
+    ("system", """give elabourate answer and be helpful and use the tools provided to you also use the knowledge base to answer the question 
+     if you are not sure about the answer, use the tools to get the answer
+     use the knowledge base to answer the question
+     always think about if the knowledge base is relevant to the question and if it is not, use the tools to get the answer
+     if the knowledge base is relevant to the question, use the knowledge base to answer the question
+     """),
+    MessagesPlaceholder(variable_name="messages"),
+])
+
+tavily_search = TavilySearch(max_results=5)
+
+# ========== Custom Document Retrieval Tool ==========
+@tool
+def search_documents(query: str, k: int, config: RunnableConfig) -> str:
+    """
+    Search for relevant documents in the user's personal knowledge base.
+    
+    Args:
+        query: The search query to find relevant documents
+    
+    Returns:
+        A formatted string containing relevant documents and their scores
+    """
+    # Access configurable parameters correctly
+    configurable = config.get("configurable", {})
+    user = configurable.get("user")
+    store_name = configurable.get("store_name")
+    
+    # Add validation
+    if not user:
+        return "Error: User information not available"
+    
+    if not store_name:
+        return "Error: No store name specified. Please provide a store name."
+    
+    try:
+        # Create filter for user's store
+        filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="metadata.user", 
+                    match=models.MatchValue(value=user)
+                ),
+                models.FieldCondition(
+                    key="metadata.store_name", 
+                    match=models.MatchValue(value=store_name)
+                ),
+            ]
+        )
+
+        # Search for relevant documents
+        results = vector_store.similarity_search_with_score(
+            query=query,
+            k=k,
+            filter=filter,
+        )
+
+        if results:
+            print(f"Found {len(results)} documents for query: {query}")
+            # Format the results
+            formatted_docs = "\n\n".join([
+                f"**Document {i+1} (Score: {score:.2f}):**\n{doc.page_content}"
+                for i, (doc, score) in enumerate(results)
+            ])
+            
+            return f"Found relevant documents from store '{store_name}':\n\n{formatted_docs}"
+        else:
+            return f"No relevant documents found in store '{store_name}' for the query: '{query}'"
+        
+    except Exception as e:
+        print(f"Error in search_documents: {str(e)}")
+        return f"Error searching document store: {str(e)}"
+
+tools = [tavily_search, search_documents]
+
+llm_with_tools = llm.bind_tools(tools)
+
+llm_chain = prompt_template | llm_with_tools
+
+tool_node = ToolNode(tools=tools)
+
+
 
 class State(TypedDict):
     messages: Annotated[list, add_messages]
 
-class ChatRequest(BaseModel):
-    message: str
-    thread_id: str
 
-def chatbot(state: State) -> State:
-    return {"messages": [llm_with_tools.invoke(state["messages"])]}
 
+def chatbot(state: dict) -> dict:
+    """Generate response using LLM."""
+    return {"messages": [llm_chain.invoke(state["messages"])]}
+
+# ========== Graph ==========
 graph_builder = StateGraph(State)
-
-graph_builder.add_node('tools', tools)
+graph_builder.add_node('tools', tool_node)
 graph_builder.add_node('chatbot', chatbot)
 graph_builder.add_edge(START, 'chatbot')
 graph_builder.add_edge('tools', 'chatbot')
-graph_builder.add_conditional_edges('chatbot', tools_condition)
+graph_builder.add_conditional_edges(
+    'chatbot',
+    tools_condition
+)
 
+
+# ========== FastAPI App ==========
 app = FastAPI()
-
 saver_ctx = None
 graph = None
 
 @app.on_event("startup")
 async def startup():
     global saver, graph, saver_ctx
-    saver_ctx = AsyncPostgresSaver.from_conn_string(DB_URI)
+    saver_ctx = AsyncPostgresSaver.from_conn_string("postgresql://postgres:123456@localhost:5433/postgres")
     saver = await saver_ctx.__aenter__()
     await saver.setup()
     graph = graph_builder.compile(checkpointer=saver)
 
 @app.on_event("shutdown")
 async def shutdown():
-    global saver_ctx
     if saver_ctx:
         await saver_ctx.__aexit__(None, None, None)
 
@@ -101,21 +157,72 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(qdrant_router)
 
-from langchain_core.messages import AIMessageChunk
+# ========== Manual Token Validation Function ==========
+async def validate_token_and_get_user(token: str, db: Session) -> DBUser:
+    """Manually validate JWT token and return user."""
+    try:
+        # Create initial state for token validation
+        initial_state = {"token": token, "db": db}
+        
+        # Use the token validation pipeline from auth.py
+        from auth import token_pipeline
+        result = token_pipeline.invoke(initial_state)
+        
+        user = result.get("user")
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        return user
+        
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token validation failed: {str(e)}")
+    
 
+# ========== SSE Endpoint ==========
 @app.get("/chat/stream")
-async def chat_stream(thread_id: str, message: str):
-    global graph
+async def chat_stream(
+    thread_id: str,
+    message: str,
+    token: str,  # Token as URL parameter
+    store_name: str = "",  # optional
+    db: Session = Depends(get_db)  # Database dependency
+):
     if graph is None:
         raise RuntimeError("Graph not initialized")
 
-    async def chat_streamer():
+    # Manually validate token and get user
+    current_user = await validate_token_and_get_user(token, db)
+    
+    if not current_user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+
+    async def streamer():
+        # Use proper message object
+        initial_state = {"messages": [HumanMessage(content=message)]}
+        
+        # Add debug logging
+        print(f"Starting chat with user: {current_user.username}")
+        print(f"Store name: {store_name}")
+        print(f"Message: {message}")
+        
         async for event in graph.astream_events(
-            {"messages": [{"role": "user", "content": message}]},
-            config={"configurable": {"thread_id": thread_id}},
+            initial_state,
+            config={
+                "configurable": {
+                    "thread_id": thread_id,
+                    "user": current_user.username,
+                    "store_name": store_name.strip() or None,
+                }
+            },
         ):
-            # Filter out non-chat events
+            # Add debug logging for tool events
+            if event.get("event") == "on_tool_start":
+                print(f"Tool started: {event.get('data', {}).get('name')}")
+            elif event.get("event") == "on_tool_end":
+                print(f"Tool ended: {event.get('data', {}).get('name')}")
+            
             if (
                 isinstance(event, dict)
                 and event.get("event") == "on_chat_model_stream"
@@ -125,5 +232,9 @@ async def chat_stream(thread_id: str, message: str):
                 if isinstance(chunk, AIMessageChunk):
                     yield f"{chunk.content}"
 
+    return EventSourceResponse(streamer())
 
-    return EventSourceResponse(chat_streamer())
+
+
+
+
