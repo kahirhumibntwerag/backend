@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Boolean, DateTime, Text, JSON
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import JSONB
 # from langgraph.checkpoint.postgres import PostgresSaver
 
 
@@ -43,6 +44,7 @@ class Thread(Base):
     
     # Relationships
     user = relationship("User", back_populates="threads")
+    checkpoints = relationship("Checkpoint", back_populates="thread")
 
 
 class VectoreStore(Base):
@@ -56,25 +58,35 @@ class VectoreStore(Base):
     # Relationships
     user = relationship("User", back_populates="vectore_stores")
 
+class Checkpoint(Base):
+    __tablename__ = 'checkpoints'
+
+    # Composite PK as per your table
+    thread_id = Column(String, ForeignKey('threads.thread_id'), primary_key=True, nullable=False)
+    checkpoint_ns = Column(String, primary_key=True, nullable=False)
+    checkpoint_id = Column(String, primary_key=True, nullable=False)
+
+    # Other columns you listed
+    parent_checkpoint_id = Column(String, nullable=True)
+    type = Column(String, nullable=True)
+    checkpoint = Column(JSONB, nullable=True)
+    metadata_ = Column('metadata', JSONB, nullable=True)  # map to DB column "metadata"
+
+    # Relationship back to Thread
+    thread = relationship("Thread", back_populates="checkpoints")
+
 # Create the threads table (this is new)
 Base.metadata.create_all(engine)
 
 
 # Add this function to help manage the relationships
 def get_user_checkpoints(user_id: int, db_session):
-    """Get all checkpoints for a specific user"""
-    from sqlalchemy import text
-    
-    query = text("""
-        SELECT c.* 
-        FROM checkpoints c
-        JOIN threads t ON c.thread_id = t.thread_id
-        WHERE t.user_id = :user_id
-        ORDER BY c.created_at DESC
-    """)
-    
-    result = db_session.execute(query, {"user_id": user_id})
-    return result.fetchall()
+    return (
+        db_session.query(Checkpoint)
+        .join(Thread, Thread.thread_id == Checkpoint.thread_id)
+        .filter(Thread.user_id == user_id)
+        .all()
+    )
 
 def create_thread_for_user(user_id: int, thread_id: str, title: str = None, db_session=None):
     """Create a new thread for a user"""

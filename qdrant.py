@@ -39,7 +39,7 @@ try:
     collection_names = [col.name for col in collections.collections]
     
     if "main" not in collection_names:
-        client.create_collection(
+        client.create_collection( 
             collection_name="main", 
             vectors_config={"size": 3072, "distance": "Cosine"}
         )
