@@ -226,17 +226,16 @@ async def shutdown():
         pass
 
 origins = [
+    "https://chatbot-liart-psi.vercel.app",
     "http://localhost:3000",
-    # add your production frontend when ready:
-    "https://chatbot-liart-psi.vercel.app/"
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(router)
