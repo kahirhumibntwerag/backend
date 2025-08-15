@@ -23,6 +23,8 @@ from auth import get_current_active_user
 
 load_dotenv()
 
+load_dotenv()
+
 # Configuration
 MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024 # 10GB
 ALLOWED_EXTENSIONS = {'.pdf'}
@@ -31,8 +33,7 @@ UPLOADS_DIR.mkdir(exist_ok=True)
 
 # Initialize embeddings and client
 embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-client = QdrantClient("http://localhost:6333")
-
+client = QdrantClient(os.getenv("QDRANT_URL"))
 # Initialize collection
 try:
     collections = client.get_collections()

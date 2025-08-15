@@ -2,14 +2,14 @@ from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Boole
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import JSONB
-# from langgraph.checkpoint.postgres import PostgresSaver
+from dotenv import load_dotenv
+load_dotenv()
+import os
 
-
-
-path = 'postgresql://postgres:123456@localhost:5433/postgres'
+path = os.getenv("APP_DATABASE_URL")
+print(path)
 engine = create_engine(path)
 Base = declarative_base()
-
 
 class BaseModel(Base):
     __abstract__ = True

@@ -1,0 +1,25 @@
+# VCS and caches
+.git
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Virtualenvs
+env/
+.venv/
+venv/
+
+# Frontend
+frontend/
+node_modules/
+
+# Editors/OS
+*.swp
+.DS_Store
+
+# Large data
+uploads/*
