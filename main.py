@@ -228,7 +228,7 @@ async def shutdown():
 origins = [
     "http://localhost:3000",
     # add your production frontend when ready:
-    # "https://your-frontend-domain.com"
+    "https://chatbot-liart-psi.vercel.app/"
 ]
 
 app.add_middleware(
