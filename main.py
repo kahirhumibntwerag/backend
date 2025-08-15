@@ -36,7 +36,7 @@ load_dotenv()
 from langchain_openai import ChatOpenAI
 
 llm = ChatOpenAI(
-    model="gpt-5")
+    model="gpt-5-mini")
 prompt_template = ChatPromptTemplate.from_messages([
     ("system", r"""You are a thoughtful assistant. Write beautiful, scannable, and approachable answers in clean GitHub‑Flavored Markdown (GFM). Always structure output hierarchically with clear sections and subsections.
 
