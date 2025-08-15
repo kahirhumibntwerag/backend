@@ -32,8 +32,10 @@ UPLOADS_DIR = Path("uploads")
 UPLOADS_DIR.mkdir(exist_ok=True)
 
 # Initialize embeddings and client
+# Initialize embeddings and client
 embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-client = QdrantClient(os.getenv("QDRANT_URL"))
+client = QdrantClient(os.getenv("QDRANT_URL"),api_key=os.getenv("QDRANT_API_KEY"))
+
 # Initialize collection
 try:
     collections = client.get_collections()
@@ -48,6 +50,16 @@ try:
     else:
         print("Collection 'main' already exists")
         
+    # Ensure payload indexes used in filters exist
+    try:
+        client.create_payload_index("main", field_name="metadata.user", field_schema=models.PayloadSchemaType.KEYWORD)
+    except Exception:
+        pass
+    try:
+        client.create_payload_index("main", field_name="metadata.store_name", field_schema=models.PayloadSchemaType.KEYWORD)
+    except Exception:
+        pass
+
 except UnexpectedResponse as e:
     if "already exists" in str(e):
         print("Collection 'main' already exists")
@@ -56,14 +68,12 @@ except UnexpectedResponse as e:
 except Exception as e:
     print(f"Error connecting to Qdrant: {e}")
 
-# Initialize vector store
 vector_store = QdrantVectorStore(
     client=client,
     collection_name="main",
     embedding=embeddings,
 )
 
-# Pydantic models
 class CreateVectoreStore(BaseModel):
     store_name: str
 

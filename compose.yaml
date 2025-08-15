@@ -12,10 +12,6 @@ services:
       retries: 20
       start_period: 10s
 
-  qdrant:
-    image: qdrant/qdrant:latest
-    volumes:
-      - qdrant_storage:/qdrant/storage
 
   backend:
     build:
@@ -24,8 +20,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      qdrant:
-        condition: service_started
     env_file:
       - .env
     ports:
@@ -36,4 +30,3 @@ services:
 
 volumes:
   pgdata:
-  qdrant_storage:
