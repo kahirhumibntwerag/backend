@@ -257,7 +257,7 @@ async def login_for_access_token(
         key="jwt",
         value=result.access_token,
         httponly=False,  # True = not accessible in JS, set to False only if you read it in client-side JS
-        secure=False,    # Set to True if using HTTPS (recommended in production)
+        secure=True,    # Set to True if using HTTPS (recommended in production)
         samesite="None",  # "Strict" or "None" depending on cross-site needs
         max_age=60 * ACCESS_TOKEN_EXPIRE_MINUTES,
         path="/"
