@@ -29,6 +29,7 @@ from langchain_tavily import TavilySearch
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_core.tools import tool
 from dotenv import load_dotenv
+from tools import search_documents, arxiv_search, arxiv_get_by_id
 load_dotenv()
 
 # ========== LLM + Prompt ==========
@@ -94,79 +95,31 @@ Guardrails:
 
 tavily_search = TavilySearch(max_results=5)
 
-# ========== Custom Document Retrieval Tool ==========
-@tool
-def search_documents(query: str, config: RunnableConfig) -> str:
-    """
-    Search for relevant documents in the user's personal knowledge base.
-    
-    Args:
-        query: The search query to find relevant documents
-    
-    Returns:
-        A formatted string containing relevant documents and their scores
-    """
-    # Access configurable parameters correctly
-    configurable = config.get("configurable", {})
-    user = configurable.get("user")
-    store_name = configurable.get("store_name")
-    
-    # Add validation
-    if not user:
-        return "Error: User information not available"
-    
-    if not store_name:
-        return "Error: No store name specified. Please provide a store name."
-    
-    try:
-        # Create filter for user's store
-        filter = models.Filter(
-            must=[
-                models.FieldCondition(
-                    key="metadata.user", 
-                    match=models.MatchValue(value=user)
-                ),
-                models.FieldCondition(
-                    key="metadata.store_name", 
-                    match=models.MatchValue(value=store_name)
-                ),
-            ]
-        )
 
-        # Search for relevant documents
-        try:
-            results = vector_store.similarity_search_with_score(
-                query=query,
-                k=5,
-                filter=filter,
-            )
-            print(results)
-        except Exception as e:
-            print(f"Vector search error: {str(e)}")
-            return f"Error searching document store: {str(e)}"
 
-        if results:
-            print(f"Found {len(results)} documents for query: {query}")
-            # Format the results
-            formatted_docs = "\n\n".join([
-                f"**Document {i+1} (Score: {score:.2f}):**\n{doc.page_content}"
-                for i, (doc, score) in enumerate(results)
-            ])
-            
-            return f"Found relevant documents from store '{store_name}':\n\n{formatted_docs}"
-        else:
-            return f"No relevant documents found in store '{store_name}' for the query: '{query}'"
-        
-    except Exception as e:
-        print(f"Error in search_documents: {str(e)}")
-        return f"Error searching document store: {str(e)}"
 
-tools = [tavily_search, search_documents]
-
+ALL_TOOLS = {
+	"tavily_search": tavily_search,
+	"search_documents": search_documents,
+	"arxiv_search": arxiv_search,
+	"arxiv_get_by_id": arxiv_get_by_id,
+}
+tools = list(ALL_TOOLS.values())
 
 tool_node = ToolNode(tools=tools)
 
-
+def _resolve_tools_from_config(config: RunnableConfig):
+	configurable = (config.get("configurable", {}) or {})
+	selected = configurable.get("tools")
+	if not selected:
+		return []
+	if isinstance(selected, str):
+		names = [n.strip() for n in selected.split(",") if n.strip()]
+	elif isinstance(selected, list):
+		names = [str(n).strip() for n in selected if str(n).strip()]
+	else:
+		names = []
+	return [ALL_TOOLS[n] for n in names if n in ALL_TOOLS]
 
 class State(TypedDict):
     messages: Annotated[list, add_messages]
@@ -197,8 +150,11 @@ def chatbot(state: dict, config: RunnableConfig) -> dict:
         llm_dynamic = ChatOpenAI(model=model_name)
         msgs_for_prompt = msgs
 
-    llm_with_tools_dynamic = llm_dynamic.bind_tools(tools)
-
+    selected_tools = _resolve_tools_from_config(config)
+    if selected_tools:
+        llm_with_tools_dynamic = llm_dynamic.bind_tools(selected_tools)
+    else:
+        llm_with_tools_dynamic = llm_dynamic
     # Build prompt then call the model with tools (base prompt stays as default)
     prompt_value = prompt_template.invoke({"messages": msgs_for_prompt})
     ai_msg = llm_with_tools_dynamic.invoke(prompt_value, config=config)
@@ -283,12 +239,13 @@ async def validate_token_and_get_user(token: str, db: Session) -> DBUser:
 # ========== SSE Endpoint ==========
 @app.get("/chat/stream")
 async def chat_stream(
-    thread_id: str,
-    message: str,
-    token: str,  # Token as URL parameter
-    store_name: str = "",  # optional
-    model: str = "",  # optional model override
-    db: Session = Depends(get_db)  # Database dependency
+	thread_id: str,
+	message: str,
+	token: str,  # Token as URL parameter
+	store_name: str = "",  # optional
+	model: str = "",  # optional model override
+	tool_names: str = "",  # optional, comma-separated tool names
+	db: Session = Depends(get_db)  # Database dependency
 ):
     if graph is None:
         raise RuntimeError("Graph not initialized")
@@ -335,6 +292,7 @@ async def chat_stream(
                     "user": username,
                     "store_name": store_name.strip() or None,
                     "model": selected_model,
+                    "tools": tool_names.strip() or None,
                 }
             },
         ):

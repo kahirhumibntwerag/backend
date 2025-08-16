@@ -26,3 +26,4 @@ langgraph-prebuilt==0.5.2
 langgraph-checkpoint-postgres==2.0.23
 
 openai==1.97.0
+arxiv
