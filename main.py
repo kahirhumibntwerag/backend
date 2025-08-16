@@ -35,8 +35,7 @@ load_dotenv()
 #llm = init_chat_model(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
 from langchain_openai import ChatOpenAI
 
-llm = ChatOpenAI(
-    model="gpt-5-mini")
+
 prompt_template = ChatPromptTemplate.from_messages([
     ("system", r"""You are a thoughtful assistant. Write beautiful, scannable, and approachable answers in clean GitHub‑Flavored Markdown (GFM). Always structure output hierarchically with clear sections and subsections.
 
@@ -164,9 +163,6 @@ def search_documents(query: str, config: RunnableConfig) -> str:
 
 tools = [tavily_search, search_documents]
 
-llm_with_tools = llm.bind_tools(tools)
-
-llm_chain = prompt_template | llm_with_tools
 
 tool_node = ToolNode(tools=tools)
 
@@ -177,16 +173,35 @@ class State(TypedDict):
 
 
 
-def chatbot(state: dict) -> dict:
+def chatbot(state: dict, config: RunnableConfig) -> dict:
     # Ensure correct mapping for the prompt
     msgs = state.get("messages", [])
     if not isinstance(msgs, list):
         msgs = [msgs]
 
-    # Build prompt first, then call the model with tools
-    prompt_value = prompt_template.invoke({"messages": msgs})
-    ai_msg = llm_with_tools.invoke(prompt_value)
+    # Pick model from config → env → default
+    default_model = os.getenv("OPENAI_DEFAULT_MODEL") or "gpt-4o-mini"
+    model_name = ((config.get("configurable", {}) or {}).get("model")) or default_model
 
+    # Build model with tools per run, and augment prompt only for gpt-4o
+    if model_name == "gpt-4o":
+        llm_dynamic = ChatOpenAI(model=model_name, temperature=0.2)
+        gpt4o_addendum = (
+            "For this conversation, prioritize thoroughly reasoned, elaborated answers. "
+            "Always output valid, clean GitHub‑Flavored Markdown (GFM): use clear headings, "
+            "bulleted/numbered lists when helpful, and fenced code blocks with language hints. "
+            "Keep structure consistent and close all fences."
+        )
+        msgs_for_prompt = [SystemMessage(content=gpt4o_addendum)] + msgs
+    else:
+        llm_dynamic = ChatOpenAI(model=model_name)
+        msgs_for_prompt = msgs
+
+    llm_with_tools_dynamic = llm_dynamic.bind_tools(tools)
+
+    # Build prompt then call the model with tools (base prompt stays as default)
+    prompt_value = prompt_template.invoke({"messages": msgs_for_prompt})
+    ai_msg = llm_with_tools_dynamic.invoke(prompt_value, config=config)
     return {"messages": [ai_msg]}
 
 # ========== Graph ==========
@@ -272,6 +287,7 @@ async def chat_stream(
     message: str,
     token: str,  # Token as URL parameter
     store_name: str = "",  # optional
+    model: str = "",  # optional model override
     db: Session = Depends(get_db)  # Database dependency
 ):
     if graph is None:
@@ -304,6 +320,9 @@ async def chat_stream(
 
     async def streamer():
         initial_state = {"messages": [HumanMessage(content=message)]}
+        # Precompute selected model from request param; avoid shadowing
+        selected_model = (model or "").strip() or None
+
         # Signal model start
         yield {"event": "model_start", "data": json.dumps({"thread_id": thread_id})}
 
@@ -315,6 +334,7 @@ async def chat_stream(
                     "thread_id": thread_id,
                     "user": username,
                     "store_name": store_name.strip() or None,
+                    "model": selected_model,
                 }
             },
         ):
@@ -331,9 +351,9 @@ async def chat_stream(
                 isinstance(event, dict)
                 and event.get("event") == "on_chat_model_start"
             ):
-                model = (event.get("metadata", {}) or {}).get("ls_model_name")
+                stream_model = (event.get("metadata", {}) or {}).get("ls_model_name")
                 provider = (event.get("metadata", {}) or {}).get("ls_provider")
-                yield {"event": "model_start", "data": json.dumps({"model": model, "provider": provider})}
+                yield {"event": "model_start", "data": json.dumps({"model": stream_model, "provider": provider})}
             elif (
                 isinstance(event, dict)
                 and event.get("event") == "on_chat_model_stream"
@@ -346,8 +366,8 @@ async def chat_stream(
                 isinstance(event, dict)
                 and event.get("event") == "on_chat_model_end"
             ):
-                model = (event.get("metadata", {}) or {}).get("ls_model_name")
-                yield {"event": "model_end", "data": json.dumps({"model": model})}
+                stream_model = (event.get("metadata", {}) or {}).get("ls_model_name")
+                yield {"event": "model_end", "data": json.dumps({"model": stream_model})}
 
         # Signal completion
         yield {"event": "done", "data": ""}
