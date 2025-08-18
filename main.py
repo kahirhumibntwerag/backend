@@ -138,7 +138,7 @@ def chatbot(state: dict, config: RunnableConfig) -> dict:
 
     # Build model with tools per run, and augment prompt only for gpt-4o
     if model_name == "gpt-4o":
-        llm_dynamic = ChatOpenAI(model=model_name, temperature=0.2)
+        llm_dynamic = ChatOpenAI(model=model_name, temperature=0.2, max_tokens=16384)
         gpt4o_addendum = (
             "For this conversation, prioritize thoroughly reasoned, elaborated answers. "
             "Always output valid, clean GitHub‑Flavored Markdown (GFM): use clear headings, "
@@ -337,7 +337,15 @@ async def chat_stream(
 async def latest_messages_for_thread(thread_id: str, request: Request, db: Session = Depends(get_db), current_user: DBUser = Depends(get_current_active_user)):
     graph = request.app.state.graph
     state = await graph.aget_state({"configurable": {"thread_id": thread_id, "user": current_user.username}})
-    return {"thread_id": thread_id, "messages": state.values.get("messages", [])}
+
+    # created_at is provided by the checkpointer via the snapshot
+    ts = getattr(state, "created_at", None)  # may be datetime or ISO string depending on version
+
+    return {
+      "thread_id": thread_id,
+      "messages": state.values.get("messages", []),
+      "timestamp": ts  # or normalize: int(ts.timestamp() * 1000) if it's a datetime
+    }
 
 
 if __name__ == "__main__":

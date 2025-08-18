@@ -121,8 +121,12 @@ async def thread_messages(
     graph = request.app.state.graph
     state = await graph.aget_state({"configurable": {"thread_id": thread_id, "user": current_user.username}})
     msgs = normalize_state_messages(state.values.get("messages", []))
-    return {"thread_id": thread_id, "messages": msgs}
-
+    ts = getattr(state, "created_at", None)
+    return {
+        "thread_id": thread_id,
+        "messages": msgs,
+        "timestamp": ts,
+    }
 @router.get("/messages")
 async def all_messages_for_user(
     request: Request,
@@ -138,6 +142,10 @@ async def all_messages_for_user(
         for tid in tids
     ])
     return [
-        {"thread_id": tid, "messages": normalize_state_messages(st.values.get("messages", []))}
+        {
+            "thread_id": tid,
+            "messages": normalize_state_messages(st.values.get("messages", [])),
+            "timestamp": getattr(st, "created_at", None),
+        }
         for tid, st in zip(tids, states)
     ]
