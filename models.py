@@ -58,6 +58,17 @@ class VectoreStore(Base):
     # Relationships
     user = relationship("User", back_populates="vectore_stores")
 
+class UserFile(Base):
+    __tablename__ = 'user_files'
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=False)
+    file_name = Column(String, nullable=False)
+    content_type = Column(String, nullable=True)
+    size = Column(Integer, nullable=True)
+    path = Column(String, nullable=False)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+
 class Checkpoint(Base):
     __tablename__ = 'checkpoints'
 

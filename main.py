@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 from starlette.middleware.cors import CORSMiddleware
 from qdrant import vector_store
-from qdrant_client import models
+from qdrant_client import models as qmodels
 from auth import get_current_active_user
 from models import User as DBUser, Thread
 from langchain_core.messages import AIMessageChunk, SystemMessage, HumanMessage
@@ -136,6 +136,41 @@ def chatbot(state: dict, config: RunnableConfig) -> dict:
     default_model = os.getenv("OPENAI_DEFAULT_MODEL") or "gpt-4o-mini"
     model_name = ((config.get("configurable", {}) or {}).get("model")) or default_model
 
+    # Build file context SystemMessage from configurable file_names
+    cfg = (config.get("configurable", {}) or {})
+    user = cfg.get("user") or ""
+    raw_files = cfg.get("file_names")
+    if isinstance(raw_files, str):
+        file_names = [f.strip() for f in raw_files.split(",") if f.strip()]
+    elif isinstance(raw_files, list):
+        file_names = [str(f).strip() for f in raw_files if str(f).strip()]
+    else:
+        file_names = []
+
+    def _build_file_context(u: str, fns: list[str]) -> str:
+        if not u or not fns:
+            return ""
+        lines = ["Selected files for this conversation:"]
+        for fn in fns[:10]:
+            try:
+                filt = qmodels.Filter(
+                    must=[
+                        qmodels.FieldCondition(key="metadata.user", match=qmodels.MatchValue(value=u)),
+                        qmodels.FieldCondition(key="metadata.filename", match=qmodels.MatchValue(value=fn)),
+                    ]
+                )
+                res = vector_store.similarity_search_with_score(query="context", k=1, filter=filt)
+                meta = res[0][0].metadata if res else {}
+                uploaded = meta.get("uploaded_at") or "unknown"
+                file_id = meta.get("file_id")
+                lines.append(f"- {fn} (uploaded_at: {uploaded}" + (f", file_id: {file_id}" if file_id else "") + ")")
+            except Exception:
+                lines.append(f"- {fn}")
+        lines.append("Only rely on these files when answering file-scoped questions.")
+        return "\n".join(lines)
+
+    file_ctx = _build_file_context(user, file_names)
+
     # Build model with tools per run, and augment prompt only for gpt-4o
     if model_name == "gpt-4o":
         llm_dynamic = ChatOpenAI(model=model_name, temperature=0.2, max_tokens=16384)
@@ -145,10 +180,13 @@ def chatbot(state: dict, config: RunnableConfig) -> dict:
             "bulleted/numbered lists when helpful, and fenced code blocks with language hints. "
             "Keep structure consistent and close all fences."
         )
-        msgs_for_prompt = [SystemMessage(content=gpt4o_addendum)] + msgs
+        msgs_for_prompt = [SystemMessage(content=gpt4o_addendum)]
+        if file_ctx:
+            msgs_for_prompt.append(SystemMessage(content=file_ctx))
+        msgs_for_prompt += msgs
     else:
         llm_dynamic = ChatOpenAI(model=model_name)
-        msgs_for_prompt = msgs
+        msgs_for_prompt = ([SystemMessage(content=file_ctx)] + msgs) if file_ctx else msgs
 
     selected_tools = _resolve_tools_from_config(config)
     if selected_tools:
@@ -245,6 +283,7 @@ async def chat_stream(
 	store_name: str = "",  # optional
 	model: str = "",  # optional model override
 	tool_names: str = "",  # optional, comma-separated tool names
+	file_names: str = "",  # optional, comma-separated file names
 	db: Session = Depends(get_db)  # Database dependency
 ):
     if graph is None:
@@ -293,6 +332,7 @@ async def chat_stream(
                     "store_name": store_name.strip() or None,
                     "model": selected_model,
                     "tools": tool_names.strip() or None,
+                    "file_names": file_names.strip() or None,
                 }
             },
         ):

@@ -216,64 +216,71 @@ def arxiv_download_pdf(id_or_url: str, dest_dir: str = "./downloads", filename: 
 @tool
 def search_documents(query: str, config: RunnableConfig) -> str:
     """
-    Search for relevant documents in the user's personal knowledge base.
-    
-    Args:
-        query: The search query to find relevant documents
-    
-    Returns:
-        A formatted string containing relevant documents and their scores
+    Search relevant documents in the user's knowledge base.
+    Filters by username, and (optionally) by one or more file names.
+    Returns content with associated metadata for model grounding.
     """
-    # Access configurable parameters correctly
     configurable = config.get("configurable", {})
     user = configurable.get("user")
-    store_name = configurable.get("store_name")
-    
-    # Add validation
+    raw_files = configurable.get("file_names")
+
     if not user:
         return "Error: User information not available"
-    
-    if not store_name:
-        return "Error: No store name specified. Please provide a store name."
-    
-    try:
-        # Create filter for user's store
-        filter = models.Filter(
-            must=[
-                models.FieldCondition(
-                    key="metadata.user", 
-                    match=models.MatchValue(value=user)
-                ),
-                models.FieldCondition(
-                    key="metadata.store_name", 
-                    match=models.MatchValue(value=store_name)
-                ),
-            ]
-        )
 
-        # Search for relevant documents
+    # Parse file_names flexible shapes
+    if isinstance(raw_files, str):
+        file_names = [f.strip() for f in raw_files.split(",") if f.strip()]
+    elif isinstance(raw_files, list):
+        file_names = [str(f).strip() for f in raw_files if str(f).strip()]
+    else:
+        file_names = []
+
+    try:
+        must = [
+            models.FieldCondition(
+                key="metadata.user",
+                match=models.MatchValue(value=user)
+            ),
+        ]
+
+        should = []
+        for fn in file_names:
+            should.append(
+                models.FieldCondition(
+                    key="metadata.filename",
+                    match=models.MatchValue(value=fn)
+                )
+            )
+
+        q_filter = models.Filter(must=must, should=should or None)
+
         try:
             results = vector_store.similarity_search_with_score(
                 query=query,
                 k=5,
-                filter=filter,
+                filter=q_filter,
             )
-            print(results)
         except Exception as e:
             print(f"Vector search error: {str(e)}")
             return f"Error searching document store: {str(e)}"
 
         if results:
-            print(f"Found {len(results)} documents for query: {query}")
-            # Format the results
+            selected_meta = (
+                "Selected files: " + ", ".join(file_names) + "\n"
+                if file_names else ""
+            )
             formatted_docs = "\n\n".join([
-                f"**Document {i+1} (Score: {score:.2f}):**\n{doc.page_content}"
+                f"Document {i+1} (Score: {score:.2f})\n"
+                f"Metadata: {getattr(doc, 'metadata', {})}\n"
+                f"Content:\n{doc.page_content}"
                 for i, (doc, score) in enumerate(results)
             ])
-            
-            return f"Found relevant documents from store '{store_name}':\n\n{formatted_docs}"
+            return f"{selected_meta}{formatted_docs}"
         else:
-            return f"No relevant documents found in store '{store_name}' for the query: '{query}'"
+            scope_msg = (
+                f" in selected file(s): {', '.join(file_names)}" if file_names else ""
+            )
+            return f"No relevant documents found{scope_msg} for the query: '{query}'"
         
     except Exception as e:
         print(f"Error in search_documents: {str(e)}")
