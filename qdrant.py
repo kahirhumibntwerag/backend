@@ -62,6 +62,10 @@ try:
         client.create_payload_index("main", field_name="metadata.filename", field_schema=models.PayloadSchemaType.KEYWORD)
     except Exception:
         pass
+    try:
+        client.create_payload_index("main", field_name="metadata.file_id", field_schema=models.PayloadSchemaType.INTEGER)
+    except Exception:
+        pass
 
 except UnexpectedResponse as e:
     if "already exists" in str(e):
