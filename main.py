@@ -171,6 +171,16 @@ def chatbot(state: dict, config: RunnableConfig) -> dict:
 
     file_ctx = _build_file_context(user, file_names)
 
+    # If files are in scope, instruct the model to MUST call search_documents first
+    tool_enforcement = ""
+    if file_ctx:
+        tool_enforcement = (
+            "When any selected files are listed above, you MUST first call the 'search_documents' tool "
+            "to retrieve relevant snippets from those files before composing your answer. "
+            "Use the user's question as the search query and constrain reasoning to the returned context. "
+            "Only after retrieving and considering those results should you write the final answer."
+        )
+
     # Build model with tools per run, and augment prompt only for gpt-4o
     if model_name == "gpt-4o":
         llm_dynamic = ChatOpenAI(model=model_name, temperature=0.2, max_tokens=16384)
@@ -183,10 +193,17 @@ def chatbot(state: dict, config: RunnableConfig) -> dict:
         msgs_for_prompt = [SystemMessage(content=gpt4o_addendum)]
         if file_ctx:
             msgs_for_prompt.append(SystemMessage(content=file_ctx))
+        if tool_enforcement:
+            msgs_for_prompt.append(SystemMessage(content=tool_enforcement))
         msgs_for_prompt += msgs
     else:
         llm_dynamic = ChatOpenAI(model=model_name)
-        msgs_for_prompt = ([SystemMessage(content=file_ctx)] + msgs) if file_ctx else msgs
+        msgs_for_prompt = []
+        if file_ctx:
+            msgs_for_prompt.append(SystemMessage(content=file_ctx))
+        if tool_enforcement:
+            msgs_for_prompt.append(SystemMessage(content=tool_enforcement))
+        msgs_for_prompt += msgs
 
     selected_tools = _resolve_tools_from_config(config)
     if selected_tools:
@@ -237,6 +254,7 @@ async def shutdown():
 origins = [
     "https://chatbot-liart-psi.vercel.app",
     "http://localhost:3000",
+    "https://invento.it.com"
 ]
 
 app.add_middleware(
