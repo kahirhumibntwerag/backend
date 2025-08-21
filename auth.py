@@ -259,6 +259,7 @@ async def login_for_access_token(
         httponly=False,  # True = not accessible in JS, set to False only if you read it in client-side JS
         secure=True,    # Set to True if using HTTPS (recommended in production)
         samesite="None",  # "Strict" or "None" depending on cross-site needs
+        domain="invento.it.com",
         max_age=60 * ACCESS_TOKEN_EXPIRE_MINUTES,
         path="/"
     )
