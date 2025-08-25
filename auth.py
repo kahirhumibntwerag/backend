@@ -237,34 +237,20 @@ auth_pipeline = (
 
 from fastapi.responses import JSONResponse
 
-@router.post("/token", response_model=Token)
+# FastAPI
+@router.post("/token")
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     initial_state = AuthenticationState(
         username=form_data.username,
         password=form_data.password,
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     result = auth_pipeline.invoke({**initial_state.model_dump(), "db": db})
-    
-    # Create the response
-    response = JSONResponse(content=result.model_dump())  # still returns token in JSON if needed
-    
-    # Set the JWT token as a cookie
-    response.set_cookie(
-        key="jwt",
-        value=result.access_token,
-        httponly=False,  # True = not accessible in JS, set to False only if you read it in client-side JS
-        secure=True,
-           # Set to True if using HTTPS (recommended in production)
-        samesite="None",  # "Strict" or "None" depending on cross-site needs
-        max_age=60 * ACCESS_TOKEN_EXPIRE_MINUTES,
-        path="/"
-    )
-
-    return response
+    # Return token JSON only. No cookie here.
+    return {"access_token": result.access_token, "token_type": "bearer"}
 
 
 
