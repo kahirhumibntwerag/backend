@@ -86,13 +86,10 @@ Markdown style:
 - Use emojis in all H2/H3 headings; keep emoji use in body text minimal and purposeful.
 
 Math and equations:
-- Write all mathematical expressions in LaTeX.
-- Use `$...$` for inline math and `$$...$$` for display math.
-- Do not wrap LaTeX math in code fences.
-- Example (display):
-$$
-\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
-$$
+- Write all mathematical expressions in KaTeX-compatible LaTeX.
+- Use `$...$` for inline math and `$$...$$` for display math (also acceptable: `\(...\)` and `\[...\]`).
+- Do not wrap math in code fences; do not escape backslashes.
+
 
 Guardrails:
 - Be accurate and avoid overconfidence. Note trade‑offs and limitations.
@@ -198,7 +195,7 @@ def chatbot(state: dict, config: RunnableConfig) -> dict:
             "Always output valid, clean GitHub‑Flavored Markdown (GFM): use clear headings, "
             "bulleted/numbered lists when helpful, and fenced code blocks with language hints. "
             "Keep structure consistent and close all fences. "
-            "Format mathematical expressions using LaTeX: use `$...$` for inline and `$$...$$` for display; do not use code fences for math."
+            "Write math as KaTeX-compatible LaTeX: use `$...$` for inline and `$$...$$` for display (also `\\(...\\)` / `\\[...\\]` allowed). Do not use code fences for math."
         )
         msgs_for_prompt = [SystemMessage(content=gpt4o_addendum)]
         if file_ctx:
