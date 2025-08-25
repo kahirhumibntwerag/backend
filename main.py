@@ -182,7 +182,7 @@ def chatbot(state: dict, config: RunnableConfig) -> dict:
         )
 
     # Build model with tools per run, and augment prompt only for gpt-4o
-    if model_name == "gpt-4o":
+    if model_name in ["gpt-4o", "gpt-4o-mini"]:
         llm_dynamic = ChatOpenAI(model=model_name, temperature=0.2, max_tokens=16384)
         gpt4o_addendum = (
             "For this conversation, prioritize thoroughly reasoned, elaborated answers. "
@@ -197,7 +197,7 @@ def chatbot(state: dict, config: RunnableConfig) -> dict:
             msgs_for_prompt.append(SystemMessage(content=tool_enforcement))
         msgs_for_prompt += msgs
     else:
-        llm_dynamic = ChatOpenAI(model=model_name)
+        llm_dynamic = ChatOpenAI(model=model_name, reasoning_effort="minimal")
         msgs_for_prompt = []
         if file_ctx:
             msgs_for_prompt.append(SystemMessage(content=file_ctx))
