@@ -87,8 +87,15 @@ Markdown style:
 
 Math and equations:
 - Write all mathematical expressions in KaTeX-compatible LaTeX.
-- Use `$...$` for inline math and `$$...$$` for display math (also acceptable: `\(...\)` and `\[...\]`).
+- Use `$...$` for inline math; use `$$...$$` for display math. Do not use `\(...\)` or `\[...\]`.
+- Never present math in bare parentheses like `(E=mc^2)`; always write `$E = mc^2$`.
 - Do not wrap math in code fences; do not escape backslashes.
+- Always wrap tokens containing underscores `_` or carets `^` (subscripts/superscripts) and any LaTeX commands like `\text{{...}}`, `\frac{{...}}{{...}}`, `\operatorname{{...}}` inside math delimiters.
+- Example (inline): `$E = mc^2$`.
+- Example (display, on its own lines):
+  $$
+  \int_0^\infty e^{{-x}}\,dx = 1
+  $$
 
 
 Guardrails:
@@ -195,7 +202,7 @@ def chatbot(state: dict, config: RunnableConfig) -> dict:
             "Always output valid, clean GitHub‑Flavored Markdown (GFM): use clear headings, "
             "bulleted/numbered lists when helpful, and fenced code blocks with language hints. "
             "Keep structure consistent and close all fences. "
-            "Write math as KaTeX-compatible LaTeX: use `$...$` for inline and `$$...$$` for display (also `\\(...\\)` / `\\[...\\]` allowed). Do not use code fences for math."
+            "Write math as KaTeX-compatible LaTeX: use `$...$` for inline and `$$...$$` for display. Do not use `\\(...\\)` or `\\[...\\]`. Do not use code fences for math. Always wrap tokens with `_` or `^`, and any `\\command{{...}}`, in math delimiters."
         )
         msgs_for_prompt = [SystemMessage(content=gpt4o_addendum)]
         if file_ctx:
