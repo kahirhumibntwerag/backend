@@ -297,18 +297,18 @@ async def validate_token_and_get_user(token: str, db: Session) -> DBUser:
 async def chat_stream(
 	thread_id: str,
 	message: str,
-	token: str,  # Token as URL parameter
 	store_name: str = "",  # optional
 	model: str = "",  # optional model override
 	tool_names: str = "",  # optional, comma-separated tool names
 	file_names: str = "",  # optional, comma-separated file names
-	db: Session = Depends(get_db)  # Database dependency
+	db: Session = Depends(get_db),  # Database dependency
+    current_user: DBUser = Depends(get_current_active_user)
 ):
     if graph is None:
         raise RuntimeError("Graph not initialized")
 
     # Manually validate token and get user
-    current_user = await validate_token_and_get_user(token, db)
+    #current_user = await validate_token_and_get_user(token, db)
     
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
