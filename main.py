@@ -117,13 +117,19 @@ $$
 - Code remains in code blocks; math remains in $...$ or $$...$$.
 
 Examples:
-- Inline: Newton’s second law is $F = ma$.
+Few-shot examples (follow exactly):
+- Inline: $G_{{\mu\nu}} + \Lambda g_{{\mu\nu}} = \tfrac{{8\pi G}}{{c^4}}\,T_{{\mu\nu}}$
+- Inline: $R = g^{{\mu\nu}} R_{{\mu\nu}}$, $\nabla^2 \, \Phi = 4\pi G \, \rho$
 - Block:
 $$
-\\int_{{-\\infty}}^{{\\infty}} e^{{-x^2}}\\,dx = \\sqrt{{\\pi}}
+ds^2 = -N^2 \, dt^2 + \gamma_{{ij}} (dx^i + N^i \, dt)(dx^j + N^j \, dt)
 $$
-
-
+$$
+\frac{{d^2 x^\mu}}{{d\tau^2}} + \Gamma^{{\mu}}_{{\nu\rho}} \frac{{dx^\nu}}{{d\tau}} \frac{{dx^\rho}}{{d\tau}} = 0
+$$
+$$
+R_{{\mu\nu}} = R^{{\rho}}{{}}_{{\mu\rho\nu}}
+$$
 
 Guardrails:
 - Be accurate and avoid overconfidence. Note trade‑offs and limitations.
